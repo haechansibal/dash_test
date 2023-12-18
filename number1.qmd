@@ -1,0 +1,141 @@
+---
+title: "기말고사 1번 문제"
+author: "김해찬"
+--- 
+
+# 기말고사1-(1),(2)
+
+```{python}
+#| title: 요일,시간에 따른 평균속력 시각화
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.io as pio
+import json
+import requests
+import pickle
+pd.options.plotting.backend = "plotly"
+pio.templates.default = "plotly_white"
+df = pd.read_csv("https://raw.githubusercontent.com/guebin/DV2023/main/posts/NYCTaxi.csv").assign(
+    log_trip_duration = lambda df: np.log(df.trip_duration),
+    pickup_datetime = lambda df: df.pickup_datetime.apply(pd.to_datetime),
+    dropoff_datetime = lambda df: df.dropoff_datetime.apply(pd.to_datetime),
+    dist = lambda df: np.sqrt((df.pickup_latitude-df.dropoff_latitude)**2 + (df.pickup_longitude-df.dropoff_longitude)**2),
+    #---#
+    vendor_id = lambda df: df.vendor_id.map({1:'A',2:'B'})
+).assign(
+    speed = lambda df: df.dist / df.trip_duration,
+    pickup_hour = lambda df: df.pickup_datetime.dt.hour,
+    dropoff_hour = lambda df: df.dropoff_datetime.dt.hour,
+    dayofweek = lambda df: df.pickup_datetime.dt.dayofweek
+)
+df_small = df[::100].reset_index(drop=True)
+df.head()
+
+weekday_korean = ['월', '화', '수', '목', '금', '토', '일']
+
+nearby_trips = df[df['dist'] < 0.012819]
+
+average_speed = nearby_trips.groupby(['dayofweek', 'pickup_hour'])['speed'].mean().reset_index(name='평균속력')
+
+fig1 = px.density_heatmap(
+    data_frame=average_speed,
+    x='pickup_hour',
+    y='dayofweek',
+    z='평균속력',
+    nbinsx=24,
+    nbinsy=7,
+    height=300,
+)
+
+fig1.update_layout(
+    xaxis=dict(title='Pickup 시간'),
+    yaxis=dict(
+        title='요일',
+        tickvals=list(range(7)),  # 0부터 6까지의 값으로 요일 설정
+        ticktext=weekday_korean   # 한글 요일 텍스트 설정
+    )
+)
+
+fig1.show()
+```
+
+```{python}
+#| title: 요일,시간에 따른 평균이동거리 시각화   
+df.dist.describe()
+# 월~일 요일 한글 리스트
+weekday_korean = ['월', '화', '수', '목', '금', '토', '일']
+
+# 근거리(거리가 0.012819 보다 작은 거리)에 해당하는 데이터 필터링
+#nearby_trips = df[df['dist'] < 0.012819]
+
+# 이동 거리 대신 평균 이동 거리 계산
+average_distance = nearby_trips.groupby(['dayofweek', 'pickup_hour'])['dist'].mean().reset_index(name='평균이동거리')
+
+# px.density_heatmap을 사용하여 요일과 시간대에 따른 근거리 이동 건수 시각화
+fig2 = px.density_heatmap(
+    data_frame=average_distance,
+    x='pickup_hour',
+    y='dayofweek',
+    z='평균이동거리',
+    nbinsx=24,
+    nbinsy=7,
+    height=300,
+)
+
+fig2.update_layout(
+    xaxis=dict(title='Pickup 시간'),
+    yaxis=dict(
+        title='요일',
+        tickvals=list(range(7)),  # 0부터 6까지의 값으로 요일 설정
+        ticktext=weekday_korean   # 한글 요일 텍스트 설정
+    )
+)
+
+fig2.show()
+```
+
+# 기말고사1-(3)
+
+```{python}
+#| title: 속력별 경로 시각화
+speed = pd.Series([1,1,2,2,3,3,4,4])
+print(pd.qcut(speed,4))
+print(pd.qcut(speed,4,labels=['매우느림','조금느림','조금빠름','매우빠름']))
+df_small['평균속도'] = pd.qcut(df_small['speed'], 4, labels=['매우느림', '조금느림', '조금빠름', '매우빠름'])
+
+# 색상 매핑을 위한 딕셔너리 생성
+color_map = {
+     '조금느림': 'yellow',
+     '매우느림': 'green',
+     '매우빠름': 'blue',
+     '조금빠름': 'red'
+}
+
+# Scatter Mapbox 생성
+fig3 = px.scatter_mapbox(
+    data_frame=df_small,
+    lat='dropoff_latitude',
+    lon='dropoff_longitude',
+    color='평균속도',
+    mapbox_style='carto-positron',
+    zoom=11,
+    color_discrete_map=color_map  # 색상 매핑을 적용합니다.
+)
+
+# 속도 구간에 따라 승차와 하차 지점을 연결하는 선 추가
+for index, row in df_small.iterrows():
+    fig3.add_trace(
+        dict(
+            type='scattermapbox',
+            lat=[row['pickup_latitude'], row['dropoff_latitude']],
+            lon=[row['pickup_longitude'], row['dropoff_longitude']],
+            mode='lines',
+            line=dict(width=2, color=color_map[row['평균속도']]),  # 속도 구간에 따라 색상 설정
+            hoverinfo='none',
+            showlegend=False
+        )
+    )
+
+fig3.show(config={'scrollZoom': False})
+```
